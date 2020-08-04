@@ -64,7 +64,7 @@ import static org.onosproject.ngsdn.tutorial.AppConstants.INITIAL_SETUP_DELAY;
         immediate = true,
         // *** TODO EXERCISE 4
         // Enable component (enabled = true)
-        enabled = false
+        enabled = true
 )
 public class L2BridgingComponent {
 
@@ -155,7 +155,7 @@ public class L2BridgingComponent {
         insertMulticastGroup(deviceId);
         insertMulticastFlowRules(deviceId);
         // Uncomment the following line after you have implemented the method:
-        // insertUnmatchedBridgingFlowRule(deviceId);
+        insertUnmatchedBridgingFlowRule(deviceId);
     }
 
     /**
