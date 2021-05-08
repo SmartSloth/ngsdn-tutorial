@@ -35,7 +35,7 @@
 // Maximum number of hops supported when using SRv6.
 // Required for Exercise 7.
 #define SRV6_MAX_HOPS 4
-
+#define MAX_PORTS 8
 // v1model: https://github.com/p4lang/p4c/blob/master/p4include/v1model.p4
 
 typedef bit<9>   port_num_t;
@@ -466,6 +466,7 @@ control IngressPipeImpl (inout parsed_headers_t    hdr,
       counters = direct_counter(CounterType.packets_and_bytes);
     }
 
+    // pop at last second point
     action srv6_end() {
         hdr.srv6h.segment_left = hdr.srv6h.segment_left - 1;
         hdr.ipv6.dst_addr = local_metadata.next_srv6_sid;
@@ -625,6 +626,11 @@ control IngressPipeImpl (inout parsed_headers_t    hdr,
 control EgressPipeImpl (inout parsed_headers_t hdr,
                         inout local_metadata_t local_metadata,
                         inout standard_metadata_t standard_metadata) {
+    
+    @name("link_delay_register") register<time_t>(MAX_PORTS) link_delay_register;
+    time_t last_delay;
+    time_t cur_delay;
+
     apply {
 
         if (standard_metadata.egress_port == CPU_PORT) {
@@ -637,6 +643,10 @@ control EgressPipeImpl (inout parsed_headers_t hdr,
               standard_metadata.ingress_port == standard_metadata.egress_port) {
             mark_to_drop(standard_metadata);
         }
+        link_delay_register.read(last_delay, (bit<32>)standard_metadata.egress_port);
+        cur_delay = standard_metadata.egress_global_timestamp - standard_metadata.ingress_global_timestamp;
+        cur_delay = (cur_delay + last_delay) / 2;
+        link_delay_register.write((bit<32>)standard_metadata.egress_port, cur_delay);
     }
 }
 

@@ -1,9 +1,6 @@
 .idea/
 tmp/
 p4src/build
-app/target
-app/src/main/resources/p4info.txt
-app/src/main/resources/bmv2.json
 ptf/stratum_bmv2.log
 ptf/p4rt_write.log
 ptf/ptf.log
@@ -16,3 +13,7 @@ ptf/ptf.pcap
 **/.settings
 **/.factorypath
 util/.pipe_cfg
+*.png
+include/__pycache__
+p4src/*.p4i
+p4src/*.json
