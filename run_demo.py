@@ -4,12 +4,12 @@ import time
 
 
 def setup_veth(veth0, veth1):
-    subprocess.Popen("bash veth_setup.sh %s %s" % (veth0, veth1),
+    subprocess.Popen("bash /int/util/veth_setup.sh %s %s" % (veth0, veth1),
                      shell=True).wait()
 
 
 def bind_host(veth0, veth1, num):
-    subprocess.Popen("bash bind_host.sh %s %s %s" % (veth0, veth1, num),
+    subprocess.Popen("bash /int/util/bind_host.sh %s %s %s" % (veth0, veth1, num),
                      shell=True).wait()
 
 

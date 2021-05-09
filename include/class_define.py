@@ -18,7 +18,7 @@ from bm_runtime.standard.ttypes import *
 from scapy.all import *
 from multiprocessing import Process, Queue, Pool
 
-from include import runtime_data
+from include import runtimedata
 
 
 def thrift_connect(thrift_ip, thrift_port, services, out=sys.stdout):
@@ -128,43 +128,46 @@ class SWITCH():
             0,
             table_name=table_name,
             action_name=action,
-            action_data=runtime_data.parse_runtime_data(
+            action_data=runtimedata.parse_runtime_data(
                 runtime_data, runtime_data_types))
 
     def table_modify(self, table, handle, action, runtime_data,
                      runtime_data_types):
         message = self.client.bm_mt_modify_entry(
             0, table, handle, action,
-            runtime_data.parse_runtime_data(runtime_data, runtime_data_types))
+            runtimedata.parse_runtime_data(runtime_data, runtime_data_types))
         return message
 
     #types mean "ip" or "mac" or a "integer", integer is bitwidth of a param
     def table_add_lpm(self, table, match_key, match_key_types, action,
-                      runtime_data, runtime_data_types):
+                      runtime_data, runtime_data_types, priority):
         message = self.client.bm_mt_add_entry(
             0, table,
-            runtime_data.parse_lpm_match_key(match_key, match_key_types),
+            runtimedata.parse_lpm_match_key(match_key, match_key_types),
             action,
-            runtime_data.parse_runtime_data(runtime_data, runtime_data_types),
-            BmAddEntryOptions(priority=0))
+            runtimedata.parse_runtime_data(runtime_data, runtime_data_types),
+            BmAddEntryOptions(priority=priority))
         return message
 
     def table_add_exact(self, table, match_key, match_key_types, action,
-                        runtime_data, runtime_data_types):
+                        runtime_data, runtime_data_types, priority):
+        print("table is %s, match_key is %s, match_key_types is %s, action is %s, \
+            runtime_data is %s, runtime_data_types is %s" % (table, match_key, \
+            match_key_types, action, runtime_data, runtime_data_types))
         message = self.client.bm_mt_add_entry(
-            0, table, runtime_data.parse_match_key(match_key, match_key_types),
+            0, table, runtimedata.parse_match_key(match_key, match_key_types),
             action,
-            runtime_data.parse_runtime_data(runtime_data, runtime_data_types),
-            BmAddEntryOptions(priority=0))
+            runtimedata.parse_runtime_data(runtime_data, runtime_data_types),
+            BmAddEntryOptions(priority=priority))
         return message
 
     def table_add_ternary(self, table, match_key, match_key_types, action,
                           runtime_data, runtime_data_types, priority):
         message = self.client.bm_mt_add_entry(
             0, table,
-            runtime_data.parse_ternary_match_key(match_key, match_key_types),
+            runtimedata.parse_ternary_match_key(match_key, match_key_types),
             action,
-            runtime_data.parse_runtime_data(runtime_data, runtime_data_types),
+            runtimedata.parse_runtime_data(runtime_data, runtime_data_types),
             BmAddEntryOptions(priority=priority))
         return message
 
@@ -191,7 +194,7 @@ class SWITCH():
             0,
             action_profile_name,
             action_name,
-            action_data=runtime_data.parse_runtime_data(
+            action_data=runtimedata.parse_runtime_data(
                 runtime_data, runtime_data_types))
         return message
 
@@ -206,7 +209,7 @@ class SWITCH():
         self.client.bm_mt_indirect_ws_add_entry(
             0,
             table_name=table_name,
-            match_key=runtime_data.parse_ternary_match_key(
+            match_key=runtimedata.parse_ternary_match_key(
                 match_key, match_key_types),
             grp_handle=grp_handle,
             options=BmAddEntryOptions(priority=0))
