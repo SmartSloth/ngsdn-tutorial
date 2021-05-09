@@ -97,7 +97,8 @@ class SWITCH():
 
     def _description(self):
         str = "Switch %s description:\nManager_port = %s\nManager_ipv6 = %s\nManager_mac = %s\nPorts = %s\nNext_hop = %s" % (
-            self.name, self.mgr_port, self.mgr_ipv6, self.mgr_mac, self.port_ipv6, self.next_hop)
+            self.name, self.mgr_port, self.mgr_ipv6, self.mgr_mac,
+            self.port_ipv6, self.next_hop)
         print(str)
 
     def _port_map(self, port, port_ipv6, next_hop):
@@ -105,82 +106,89 @@ class SWITCH():
         self.next_hop[port] = next_hop
 
     def counter_read(self, counter_name, index):
-        message = self.client.bm_counter_read(cxt_id=0,
-                                              counter_name=counter_name,
-                                              index=index)
-        return message
+        return self.client.bm_counter_read(cxt_id=0,
+                                           counter_name=counter_name,
+                                           index=index)
 
     def counter_reset(self, counter_name):
-        self.client.bm_counter_reset_all(cxt_id=0, counter_name=counter_name)
+        return self.client.bm_counter_reset_all(cxt_id=0, counter_name=counter_name)
 
     def register_write(self, register_name, index, value):
-        self.client.bm_register_write(0, register_name, index, value)
+        return self.client.bm_register_write(0, register_name, index, value)
 
     def table_delete(self, table, entry_handle):
-        self.client.bm_mt_delete_entry(0, table, entry_handle)
+        return self.client.bm_mt_delete_entry(0, table, entry_handle)
 
     def register_read(self, register_name, index):
         return self.client.bm_register_read(0, register_name, index)
 
     def set_default_action(self, table_name, action, runtime_data,
                            runtime_data_types):
-        self.client.bm_mt_set_default_action(
+        message = self.client.bm_mt_set_default_action(
             0,
             table_name=table_name,
             action_name=action,
-            action_data=runtimedata.parse_runtime_data(
-                runtime_data, runtime_data_types))
+            action_data=runtimedata.parse_runtime_data(runtime_data,
+                                                       runtime_data_types))
+        return message
 
     def table_modify(self, table, handle, action, runtime_data,
                      runtime_data_types):
-        message = self.client.bm_mt_modify_entry(
+        entry_handle = self.client.bm_mt_modify_entry(
             0, table, handle, action,
             runtimedata.parse_runtime_data(runtime_data, runtime_data_types))
-        return message
+        return entry_handle
 
     #types mean "ip" or "mac" or a "integer", integer is bitwidth of a param
     def table_add_lpm(self, table, match_key, match_key_types, action,
-                      runtime_data, runtime_data_types, priority):
-        message = self.client.bm_mt_add_entry(
+                      runtime_data, runtime_data_types):
+        entry_handle = self.client.bm_mt_add_entry(
             0, table,
             runtimedata.parse_lpm_match_key(match_key, match_key_types),
             action,
             runtimedata.parse_runtime_data(runtime_data, runtime_data_types),
-            BmAddEntryOptions(priority=priority))
-        return message
+            BmAddEntryOptions(priority=0))
+        return entry_handle
 
     def table_add_exact(self, table, match_key, match_key_types, action,
-                        runtime_data, runtime_data_types, priority):
-        print("table is %s, match_key is %s, match_key_types is %s, action is %s, \
-            runtime_data is %s, runtime_data_types is %s" % (table, match_key, \
-            match_key_types, action, runtime_data, runtime_data_types))
-        message = self.client.bm_mt_add_entry(
+                        runtime_data, runtime_data_types):
+        entry_handle = self.client.bm_mt_add_entry(
             0, table, runtimedata.parse_match_key(match_key, match_key_types),
             action,
             runtimedata.parse_runtime_data(runtime_data, runtime_data_types),
-            BmAddEntryOptions(priority=priority))
-        return message
+            BmAddEntryOptions(priority=0))
+        return entry_handle
 
     def table_add_ternary(self, table, match_key, match_key_types, action,
                           runtime_data, runtime_data_types, priority):
-        message = self.client.bm_mt_add_entry(
+        entry_handle = self.client.bm_mt_add_entry(
             0, table,
             runtimedata.parse_ternary_match_key(match_key, match_key_types),
             action,
             runtimedata.parse_runtime_data(runtime_data, runtime_data_types),
             BmAddEntryOptions(priority=priority))
-        return message
+        return entry_handle
 
     def table_get(self, table_name):
-        message = self.client.bm_mt_get_entries(0, table_name)
-        return message
+        entries = self.client.bm_mt_get_entries(0, table_name)
+        return entries
 
     def mirroring_add(self, mirror_id, egress_port):
         self.client.mirroring_mapping_add(self, mirror_id, egress_port)
 
+    def get_group(self, action_profile_name, grp_handle):
+        group = self.client.bm_mt_act_prof_get_group(
+            0, act_prof_name=action_profile_name, grp_handle=grp_handle)
+        return group
+
     def create_group(self, action_profile_name):
-        message = self.client.bm_mt_act_prof_create_group(
+        grp_handle = self.client.bm_mt_act_prof_create_group(
             0, act_prof_name=action_profile_name)
+        return grp_handle
+
+    def delete_group(self, action_profile_name, grp_handle):
+        message = self.client.bm_mt_act_prof_delete_group(
+            0, act_prof_name=action_profile_name, grp_handle=grp_handle)
         return message
 
     def add_member_to_group(self, action_profile_name, mbr_handle, grp_handle):
@@ -190,13 +198,13 @@ class SWITCH():
 
     def act_prof_add_member(self, action_profile_name, action_name,
                             runtime_data, runtime_data_types):
-        message = self.client.bm_mt_act_prof_add_member(
+        mbr_handle = self.client.bm_mt_act_prof_add_member(
             0,
             action_profile_name,
             action_name,
-            action_data=runtimedata.parse_runtime_data(
-                runtime_data, runtime_data_types))
-        return message
+            action_data=runtimedata.parse_runtime_data(runtime_data,
+                                                       runtime_data_types))
+        return mbr_handle
 
     def act_prof_remove_member_from_group(self, action_profile_name,
                                           mbr_handle, grp_handle):
@@ -206,10 +214,11 @@ class SWITCH():
 
     def add_entry_to_group(self, table_name, match_key, match_key_types,
                            grp_handle):
-        self.client.bm_mt_indirect_ws_add_entry(
+        entry_handle = self.client.bm_mt_indirect_ws_add_entry(
             0,
             table_name=table_name,
             match_key=runtimedata.parse_ternary_match_key(
                 match_key, match_key_types),
             grp_handle=grp_handle,
             options=BmAddEntryOptions(priority=0))
+        return entry_handle
