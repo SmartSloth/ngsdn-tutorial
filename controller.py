@@ -21,7 +21,7 @@ from include.class_define import SWITCH, thrift_connect
 class Controller():
     def __init__(self):
         self.SWITCH_NUM = 0
-        self.TOPO_FILE = "/int/topo/default_topo"
+        self.TOPO_FILE = "/int/topo/test_ipv6_topo"
         self.GRAPH = nx.Graph()
         self.LINK_LIST = self.readTopoFile()
         self.SWITCH_LIST = self.switchConnect()
@@ -32,23 +32,23 @@ class Controller():
         self.PORT_IPV6 = {}
 
     def switchConnect(self):
-        try:
-            self.SWITCH_NUM = int(
-                os.popen("netstat -tunlp | grep simple_switch | wc -l").
-                readlines()[0])
-            print("Now has %d switches" % self.SWITCH_NUM)
-            switch_list = []
-            for index in range(self.SWITCH_NUM):
-                sw = SWITCH(9000 + index, "127.0.0.1")
-                # print("has ports %s" % (self.LINK_LIST[str(index)].keys()))
-                for port in self.LINK_LIST[str(index)].keys():
-                    ipv6 = netifaces.ifaddresses(port)[
-                        netifaces.AF_INET6][0]['addr']
-                    ipv6 = ipv6.split("%")[0]
-                    sw._port_map(port, ipv6, self.LINK_LIST[str(index)][port])
-                switch_list.append(sw)
-        except:
-            print("connect error")
+        # try:
+        self.SWITCH_NUM = int(
+            os.popen("netstat -tunlp | grep simple_switch | wc -l").
+            readlines()[0])
+        print("Now has %d switches" % self.SWITCH_NUM)
+        switch_list = []
+        for index in range(self.SWITCH_NUM):
+            sw = SWITCH(9000 + index, "127.0.0.1")
+            print("has ports %s" % (self.LINK_LIST[str(index)].keys()))
+            for port in self.LINK_LIST[str(index)].keys():
+                ipv6 = netifaces.ifaddresses(port)[
+                    netifaces.AF_INET6][0]['addr']
+                ipv6 = ipv6.split("%")[0]
+                sw._port_map(port, ipv6, self.LINK_LIST[str(index)][port])
+            switch_list.append(sw)
+        # except:
+        #     print("connect error")
         return switch_list
 
     def readTopoFile(self):
@@ -56,10 +56,13 @@ class Controller():
             cmds = f.readlines()
         tors = cmds[:2][0][:-1].split(":")[-1]
         core = cmds[:2][1][:-1].split(":")[-1]
-        tors = [_[1:] for _ in tors.split(",")]
-        core = [_[1:] for _ in core.split(",")]
-        sws = tors + core
-        # print(sws)
+        if tors != "":
+            tors = [_[1:] for _ in tors.split(",")]
+            sws = tors
+        if core != "":
+            core = [_[1:] for _ in core.split(",")]
+            sws = sws + core
+        print(sws)
         nodes = [str("s" + str(i)) for i in sws]
         color_map = {}
         for sw in sws:
@@ -249,6 +252,7 @@ class Controller():
                     grp_handle=self.DOWNSTREAM_GROUP_HANDLE[str(switch.name)])
 
         if len(upstreamGroupSwitches) > 0:
+            print("upstreamGroupSwitches is %s" % upstreamGroupSwitches)
             upstream_grp_handle = switch.create_group(
                 "IngressPipeImpl.ecmp_selector")
             self.UPSTREAM_GROUP_HANDLE[str(switch.name)] = upstream_grp_handle
@@ -338,7 +342,7 @@ class Controller():
             entry_hdl = self.writeMyStationTable(sw, sw.mgr_mac)
             entry_hdl_map["IngressPipeImpl.my_station_table"].append(entry_hdl)
 
-            self.deleteEntries(sw, entry_hdl_map)
+            # self.deleteEntries(sw, entry_hdl_map)
 
             upstream_ecmp_group = []
             downstream_ecmp_group = []
@@ -359,33 +363,33 @@ class Controller():
                 if len(upstream_ecmp_group) > 0:
                     for dst_index in range(
                             int(sw.name.split("s")[1]) + 1,
-                            int(self.SWITCH_NUM)):
+                            int(self.SWITCH_NUM) + 1):
                         if str("s" +
                                str(dst_index)) in self.nexthopToNeighbors(sw):
                             continue
-                        else:
-                            entry_hdl = self.writeEcmpGroupRoutingTable(
-                                sw,
-                                self.getSwitchInstanceFromIndex(
-                                    dst_index).mgr_ipv6, upstream_ecmp_group)
-                            entry_hdl_map[
-                                "IngressPipeImpl.routing_v6_table"].append(
-                                    entry_hdl)
+                        # else:
+                        #     entry_hdl = self.writeEcmpGroupRoutingTable(
+                        #         sw,
+                        #         self.getSwitchInstanceFromIndex(
+                        #             dst_index).mgr_ipv6, upstream_ecmp_group)
+                        #     entry_hdl_map[
+                        #         "IngressPipeImpl.routing_v6_table"].append(
+                        #             entry_hdl)
                 if len(downstream_ecmp_group) > 0:
                     for dst_index in range(int(sw.name.split("s")[1])):
                         if str("s" +
                                str(dst_index)) in self.nexthopToNeighbors(sw):
                             continue
-                        else:
-                            entry_hdl = self.writeEcmpGroupRoutingTable(
-                                sw,
-                                self.getSwitchInstanceFromIndex(
-                                    dst_index).mgr_ipv6, downstream_ecmp_group)
-                            entry_hdl_map[
-                                "IngressPipeImpl.routing_v6_table"].append(
-                                    entry_hdl)
-                self.deleteEntries(sw, entry_hdl_map)
-                self.deleteGroups(sw)
+                        # else:
+                        #     entry_hdl = self.writeEcmpGroupRoutingTable(
+                        #         sw,
+                        #         self.getSwitchInstanceFromIndex(
+                        #             dst_index).mgr_ipv6, downstream_ecmp_group)
+                        #     entry_hdl_map[
+                        #         "IngressPipeImpl.routing_v6_table"].append(
+                        #             entry_hdl)
+                # self.deleteEntries(sw, entry_hdl_map)
+                # self.deleteGroups(sw)
 
     def controllerMain(self):
         print("Controller connecting to switches ...")

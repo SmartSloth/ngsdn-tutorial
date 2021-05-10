@@ -49,9 +49,12 @@ with open(args.topo_file, "r") as f:
 
 tors = cmds[:2][0][:-1].split(":")[-1]
 core = cmds[:2][1][:-1].split(":")[-1]
-tors = [_[1:] for _ in tors.split(",")]
-core = [_[1:] for _ in core.split(",")]
-sws = tors + core
+if tors != "":
+    tors = [_[1:] for _ in tors.split(",")]
+    sws = tors
+if core != "":
+    core = [_[1:] for _ in core.split(",")]
+    sws = sws + core
 # print("********** swss has: %s", str(sws))
 # print("********** tors has: %s", str(tors))
 # print("********** core has: %s", str(core))
