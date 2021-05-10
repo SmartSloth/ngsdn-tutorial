@@ -1,3 +1,5 @@
+#! python3
+
 import struct
 import socket
 from bm_runtime.standard.ttypes import *

@@ -1,3 +1,5 @@
+#! python3
+
 import os
 import re
 import sys
@@ -216,11 +218,12 @@ class Controller():
         return info
 
     def writeEcmpGroupRoutingTable(self, switch, dstIpv6Addr, grp_handle):
+        print("switch is %s, dstIpv6Addr is %s, grp_handle is %s" % (switch.name, dstIpv6Addr, grp_handle))
         info = switch.add_entry_to_group(
             table_name="IngressPipeImpl.routing_v6_table",
-            match_key=[dstIpv6Addr, 128],
+            match_key=[dstIpv6Addr, "128"],
             match_key_types=["ipv6", "32"],
-            grp_handle=grp_handle)
+            grp_handle=int(grp_handle))
         print("Insert routing_v6_table on %s successfully: %s" %
               (switch.name, info))
         return info
@@ -359,35 +362,32 @@ class Controller():
             if len(upstream_ecmp_group) > 0 or len(downstream_ecmp_group) > 0:
                 self.createEcmpSelectorGroup(sw, downstream_ecmp_group,
                                              upstream_ecmp_group)
-                # print("group_handle has %s" % self.GROUP_HANDLE)
+                print(
+                    "downstream_group_handle has %s, upstream_group_handle is %s"
+                    %
+                    (self.DOWNSTREAM_GROUP_HANDLE, self.UPSTREAM_GROUP_HANDLE))
                 if len(upstream_ecmp_group) > 0:
                     for dst_index in range(
                             int(sw.name.split("s")[1]) + 1,
-                            int(self.SWITCH_NUM) + 1):
-                        if str("s" +
-                               str(dst_index)) in self.nexthopToNeighbors(sw):
-                            continue
-                        # else:
-                        #     entry_hdl = self.writeEcmpGroupRoutingTable(
-                        #         sw,
-                        #         self.getSwitchInstanceFromIndex(
-                        #             dst_index).mgr_ipv6, upstream_ecmp_group)
-                        #     entry_hdl_map[
-                        #         "IngressPipeImpl.routing_v6_table"].append(
-                        #             entry_hdl)
+                            int(self.SWITCH_NUM)):
+                        entry_hdl = self.writeEcmpGroupRoutingTable(
+                            sw,
+                            self.getSwitchInstanceFromIndex(
+                                dst_index).mgr_ipv6,
+                            self.UPSTREAM_GROUP_HANDLE[sw.name])
+                        entry_hdl_map[
+                            "IngressPipeImpl.routing_v6_table"].append(
+                                entry_hdl)
                 if len(downstream_ecmp_group) > 0:
                     for dst_index in range(int(sw.name.split("s")[1])):
-                        if str("s" +
-                               str(dst_index)) in self.nexthopToNeighbors(sw):
-                            continue
-                        # else:
-                        #     entry_hdl = self.writeEcmpGroupRoutingTable(
-                        #         sw,
-                        #         self.getSwitchInstanceFromIndex(
-                        #             dst_index).mgr_ipv6, downstream_ecmp_group)
-                        #     entry_hdl_map[
-                        #         "IngressPipeImpl.routing_v6_table"].append(
-                        #             entry_hdl)
+                        entry_hdl = self.writeEcmpGroupRoutingTable(
+                            sw,
+                            self.getSwitchInstanceFromIndex(
+                                dst_index).mgr_ipv6,
+                            self.DOWNSTREAM_GROUP_HANDLE[sw.name])
+                        entry_hdl_map[
+                            "IngressPipeImpl.routing_v6_table"].append(
+                                entry_hdl)
                 # self.deleteEntries(sw, entry_hdl_map)
                 # self.deleteGroups(sw)
 

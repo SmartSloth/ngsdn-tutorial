@@ -1,3 +1,5 @@
+#! python3
+
 import os
 import re
 import sys
@@ -217,7 +219,7 @@ class SWITCH():
         entry_handle = self.client.bm_mt_indirect_ws_add_entry(
             0,
             table_name=table_name,
-            match_key=runtimedata.parse_ternary_match_key(
+            match_key=runtimedata.parse_lpm_match_key(
                 match_key, match_key_types),
             grp_handle=grp_handle,
             options=BmAddEntryOptions(priority=0))
