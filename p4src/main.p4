@@ -424,14 +424,14 @@ control IngressPipeImpl (inout parsed_headers_t    hdr,
         counters = direct_counter(CounterType.packets_and_bytes);
     }
 
-    // --- my_station_table ---------------------------------------------------
+    // --- rmac (router mac) ---------------------------------------------------
 
-    table my_station_table {
+    table rmac {
         key = {
             hdr.ethernet.dst_addr: exact;
         }
         actions = { NoAction; }
-        @name("my_station_table_counter")
+        @name("rmac_counter")
         counters = direct_counter(CounterType.packets_and_bytes);
     }
 
@@ -601,7 +601,7 @@ control IngressPipeImpl (inout parsed_headers_t    hdr,
         }
 
         if (do_l3_l2) {
-            if (hdr.ipv6.isValid() && my_station_table.apply().hit) {
+            if (hdr.ipv6.isValid() && rmac.apply().hit) {
                 if (srv6_my_sid.apply().hit) {
                     // PSP logic -- enabled for all packets
                     if (hdr.srv6h.isValid() && hdr.srv6h.segment_left == 0) {

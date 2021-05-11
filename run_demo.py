@@ -14,9 +14,14 @@ def bind_host(veth0, veth1, num):
     subprocess.Popen("bash /int/util/bind_host.sh %s %s %s" % (veth0, veth1, num),
                      shell=True).wait()
 
+def setup_gw(num, veth_port):
+    subprocess.Popen("bash /int/util/setup_gw.sh %s %s" % (num, veth_port),
+                     shell=True).wait()
+
 
 BMV2_PATH = "/behavioral-model/"
 SWITCH_PATH = "/usr/local/bin/simple_switch "
+# simple_switch target uses the SimplePreLAG engine
 CLI_PATH = BMV2_PATH + "targets/simple_switch/sswitch_CLI "
 P4_JSON = "/int/p4src/main.json"
 
@@ -64,8 +69,12 @@ if core != "":
 links = dict(zip(sws, [{} for _ in sws]))
 topo = cmds[2:]
 for s in sws:
-    setup_veth("s%s-int" % (s, ),
-               "s%s-mgr" % (s, ))  # clone to controller, port 11
+    switch_mgr = "s%s-mgr" % (s, )
+    setup_veth("s%s-int" % (s, ), switch_mgr)  # clone to controller, port 11
+    setup_gw("%s" % (s, ), "s%s-mgr" % (s, ))
+    subprocess.Popen("ip link set dev %s address 10:00:11:11:%s:11" %
+                     (switch_mgr, s),
+                     shell=True).wait()
 for s in tors:
     bind_host("s%s-trf" % (s, ), "s%s-tin" % (s, ),
               "%s" % (s, ))  # connect to host, port 10
@@ -86,14 +95,14 @@ for i in sws:
     switch_args = "--thrift-port %d --device-id %s " % (args.thrift_port +
                                                         int(i), i)
     if i in tors:
-        switch_args += "-i 10@s%s-tin " % (i, ) # connect to host, port 10
+        switch_args += "-i 6@s%s-tin " % (i, ) # connect to host, port 6
     for j, p in links[i].items():
         switch_args += "-i %s@%s " % (j, p)
-    switch_args += "-i 11@s%s-mgr " % (i, ) # clone to controller, port 11
+    switch_args += "-i 7@s%s-mgr " % (i, ) # clone to controller, port 7
     if args.console_log:
         switch_args += "--log-console "
-    # if i == 8:
-    #     switch_args += "--nanolog ipv:///tmp/bm-log.ipc "
+    # switch_args += "--pre SimplePreLAG "
+    # switch_args += "--nanolog ipv:///tmp/bm-log.ipc "
     switch_args += P4_JSON
     switch_args_list.append(switch_args)
 # print(switch_args_list)

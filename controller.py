@@ -18,11 +18,15 @@ import include.runtimedata
 from include.class_define import SWITCH, thrift_connect
 
 # links = [["eth0:s1-eth1", "eth1:s2-eth1"], ["eth0:s1-host"], ["eth0:s2-host"]]
+MGR_PORTNUM = 7
+TIN_PORTNUM = 6
+DEFAULT_MC_MGRP = 1
 
 
 class Controller():
     def __init__(self):
         self.SWITCH_NUM = 0
+        self.TOR_LIST = {}  # switch.name:host_ipv6
         self.TOPO_FILE = "/int/topo/test_ipv6_topo"
         self.GRAPH = nx.Graph()
         self.LINK_LIST = self.readTopoFile()
@@ -31,24 +35,26 @@ class Controller():
         self.UPSTREAM_GROUP_HANDLE = {}
         self.DOWNSTREAM_MEMBER_HANDLE = {}
         self.UPSTREAM_MEMBER_HANDLE = {}
+        self.MC_GROUP_HANDLE = {}
         self.PORT_IPV6 = {}
 
     def switchConnect(self):
         # try:
         self.SWITCH_NUM = int(
-            os.popen("netstat -tunlp | grep simple_switch | wc -l").
-            readlines()[0])
+            os.popen(
+                "netstat -tunlp | grep simple_switch | wc -l").readlines()[0])
         print("Now has %d switches" % self.SWITCH_NUM)
         switch_list = []
         for index in range(self.SWITCH_NUM):
             sw = SWITCH(9000 + index, "127.0.0.1")
-            print("has ports %s" % (self.LINK_LIST[str(index)].keys()))
+            # print("has ports %s" % (self.LINK_LIST[str(index)].keys()))
             for port in self.LINK_LIST[str(index)].keys():
                 ipv6 = netifaces.ifaddresses(port)[
                     netifaces.AF_INET6][0]['addr']
                 ipv6 = ipv6.split("%")[0]
                 sw._port_map(port, ipv6, self.LINK_LIST[str(index)][port])
             switch_list.append(sw)
+            print("s%s description: %s" % (str(index), sw._description()))
         # except:
         #     print("connect error")
         return switch_list
@@ -64,7 +70,10 @@ class Controller():
         if core != "":
             core = [_[1:] for _ in core.split(",")]
             sws = sws + core
-        print(sws)
+        if len(tors) > 0:
+            for sw_index in tors:
+                self.TOR_LIST[sw_index] = getHostIpv6FromIndex(sw_index)
+        # print(sws)
         nodes = [str("s" + str(i)) for i in sws]
         color_map = {}
         for sw in sws:
@@ -117,18 +126,17 @@ class Controller():
               (switch.name, info))
         return info
 
-    # IngressPipeImpl.my_station_table(hdr.ethernet.dst_addr)
+    # IngressPipeImpl.rmac(hdr.ethernet.dst_addr)
     # only a counter counting how many l2 packet reach here
     # same as rmac.hit()
-    def writeMyStationTable(self, switch, ethDstAddr):
-        info = switch.table_add_exact(table="IngressPipeImpl.my_station_table",
+    def writeRmacTable(self, switch, ethDstAddr):
+        info = switch.table_add_exact(table="IngressPipeImpl.rmac",
                                       match_key=[str(ethDstAddr)],
                                       match_key_types=['mac'],
                                       action="NoAction",
                                       runtime_data=[],
                                       runtime_data_types=[])
-        print("Insert my_station_table on %s successfully: %s" %
-              (switch.name, info))
+        print("Insert rmac on %s successfully: %s" % (switch.name, info))
         return info
 
     # IngressPipeImpl.srv6_my_sid(hdr.ipv6.dst_addr)
@@ -159,6 +167,8 @@ class Controller():
 
     # IngressPipeImpl.l2_exact_table(hdr.ethernet.dst_addr)
     def writeL2ExactTable(self, switch, ethDstAddr, egressPort):
+        print("switch = %s, ethDstAddr = %s, egressPort = %d" %
+              (switch.name, ethDstAddr, egressPort))
         info = switch.table_add_exact(table="IngressPipeImpl.l2_exact_table",
                                       match_key=[str(ethDstAddr)],
                                       match_key_types=['mac'],
@@ -169,16 +179,25 @@ class Controller():
               (switch.name, info))
         return info
 
+    def createL2MulticastGroup(self, switch, gid, ports):
+        mgrp_hdl, l1_hdl, message = switch.multicast_group_create(gid=gid,
+                                                                  rid=0,
+                                                                  ports=ports,
+                                                                  lags=ports)
+        print("Create multicast group on %s successfully: %s" %
+              (switch.name, str(str(mgrp_hdl) + str(l1_hdl) + str(message))))
+        return mgrp_hdl, l1_hdl, message
+
     # IngressPipeImpl.l2_ternary_table(hdr.ethernet.dst_addr)
-    # TODO: no need temporaryly
     def writeL2TernaryTable(self, switch, ethDstAddr, multicastGroup):
-        info = switch.table_add_lpm(
+        info = switch.table_add_ternary(
             table="IngressPipeImpl.l2_ternary_table",
-            match_key=[str(ethDstAddr)],
-            match_key_types=['mac'],
+            match_key=[ethDstAddr, "ff:ff:ff:ff:ff:00"],
+            match_key_types=['mac', '48'],
             action="IngressPipeImpl.set_multicast_group",
             runtime_data=[str(multicastGroup)],
-            runtime_data_types=[''])
+            runtime_data_types=['32'],
+            priority=10)
         print("Insert l2_ternary_table on %s successfully: %s" %
               (switch.name, info))
         return info
@@ -218,10 +237,11 @@ class Controller():
         return info
 
     def writeEcmpGroupRoutingTable(self, switch, dstIpv6Addr, grp_handle):
-        print("switch is %s, dstIpv6Addr is %s, grp_handle is %s" % (switch.name, dstIpv6Addr, grp_handle))
+        print("switch is %s, dstIpv6Addr is %s, grp_handle is %s" %
+              (switch.name, dstIpv6Addr, grp_handle))
         info = switch.add_entry_to_group(
             table_name="IngressPipeImpl.routing_v6_table",
-            match_key=[dstIpv6Addr, "128"],
+            match_key=[dstIpv6Addr, "112"],
             match_key_types=["ipv6", "32"],
             grp_handle=int(grp_handle))
         print("Insert routing_v6_table on %s successfully: %s" %
@@ -255,7 +275,7 @@ class Controller():
                     grp_handle=self.DOWNSTREAM_GROUP_HANDLE[str(switch.name)])
 
         if len(upstreamGroupSwitches) > 0:
-            print("upstreamGroupSwitches is %s" % upstreamGroupSwitches)
+            # print("upstreamGroupSwitches is %s" % upstreamGroupSwitches)
             upstream_grp_handle = switch.create_group(
                 "IngressPipeImpl.ecmp_selector")
             self.UPSTREAM_GROUP_HANDLE[str(switch.name)] = upstream_grp_handle
@@ -281,8 +301,7 @@ class Controller():
     def deleteAllEntries(self):
         for sw in self.SWITCH_LIST:
             for table in [
-                    "IngressPipeImpl.ndp_reply_table",
-                    "IngressPipeImpl.my_station_table",
+                    "IngressPipeImpl.ndp_reply_table", "IngressPipeImpl.rmac",
                     "IngressPipeImpl.srv6_my_sid",
                     "IngressPipeImpl.srv6_transit",
                     "IngressPipeImpl.l2_exact_table",
@@ -292,7 +311,7 @@ class Controller():
             ]:
                 entries = sw.table_get(table)
                 for e in entries:
-                    entry_handle = self.getEntryHandle(str(e))
+                    entry_handle = getEntryHandle(str(e))
                     sw.table_delete(table, entry_handle)
 
     def deleteGroups(self, switch):
@@ -316,9 +335,10 @@ class Controller():
 
     def insertAllEntries(self):
         for sw in self.SWITCH_LIST:
+            print("*" * 40)
             entry_hdl_map = {
                 "IngressPipeImpl.ndp_reply_table": [],
-                "IngressPipeImpl.my_station_table": [],
+                "IngressPipeImpl.rmac": [],
                 "IngressPipeImpl.srv6_my_sid": [],
                 "IngressPipeImpl.srv6_transit": [],
                 "IngressPipeImpl.l2_exact_table": [],
@@ -326,15 +346,22 @@ class Controller():
                 "IngressPipeImpl.acl_table": [],
                 "IngressPipeImpl.routing_v6_table": []
             }
+            entry_hdl = self.writeRmacTable(sw, sw.mgr_mac)
+            entry_hdl_map["IngressPipeImpl.rmac"].append(entry_hdl)
 
-            for port in sw.next_hop.keys():
-                nethop_mac = self.getMacByPortName(
-                    self.getSwitchMgrFromPort(sw.next_hop[port]))
-                # print("nexthop is %s, nethop_mac is %s, egress port is %s" % (self.getDeviceFromPort(sw.next_hop[port]), nethop_mac, port.split("eth")[1]))
-                entry_hdl = self.writeL2ExactTable(sw, nethop_mac,
-                                                   port.split("eth")[1])
-                entry_hdl_map["IngressPipeImpl.l2_exact_table"].append(
-                    entry_hdl)
+            # entry_hdl = self.writeL2ExactTable(sw, sw.mgr_mac, MGR_PORTNUM)
+            # entry_hdl_map["IngressPipeImpl.l2_exact_table"].append(entry_hdl)
+
+            mgrp_hdl, l1_hdl, message = self.createL2MulticastGroup(
+                sw, DEFAULT_MC_MGRP, str(TIN_PORTNUM))
+            self.MC_GROUP_HANDLE[sw.name] = [mgrp_hdl, l1_hdl, message]
+
+            entry_hdl = self.writeL2TernaryTable(sw, sw.mgr_mac, mgrp_hdl)
+            entry_hdl_map["IngressPipeImpl.l2_ternary_table"].append(entry_hdl)
+
+            entry_hdl = self.writeNdpReply(sw, self.TOR_LIST[str(sw.index)],
+                                           sw.mgr_mac)
+            entry_hdl_map["IngressPipeImpl.ndp_reply_table"].append(entry_hdl)
 
             entry_hdl = self.writeNdpReply(sw, sw.mgr_ipv6, sw.mgr_mac)
             entry_hdl_map["IngressPipeImpl.ndp_reply_table"].append(entry_hdl)
@@ -342,48 +369,62 @@ class Controller():
             entry_hdl = self.writeSRv6MySidTable(sw, sw.mgr_ipv6)
             entry_hdl_map["IngressPipeImpl.srv6_my_sid"].append(entry_hdl)
 
-            entry_hdl = self.writeMyStationTable(sw, sw.mgr_mac)
-            entry_hdl_map["IngressPipeImpl.my_station_table"].append(entry_hdl)
-
-            # self.deleteEntries(sw, entry_hdl_map)
-
             upstream_ecmp_group = []
             downstream_ecmp_group = []
             print("%s nexthop has: %s" % (sw.name, sw.next_hop))
-            for sw_next in sw.next_hop:
+            for port in sw.next_hop.keys():
+                # switch self port mac address
+                # port_ipv6 = getIpv6ByPortName(port)
+                # entry_hdl = self.writeNdpReply(sw, port_ipv6,
+                #                                getMacByPortName(port))
+                # entry_hdl_map["IngressPipeImpl.ndp_reply_table"].append(
+                #     entry_hdl)
+                next_hop_port = sw.next_hop[port]
+                neighbor = getSwitchInstanceFromPort(self.SWITCH_LIST,
+                                                     next_hop_port)
+                entry_hdl = self.writeL2ExactTable(
+                    sw, neighbor.mgr_mac,
+                    int(port.split("eth")[1]))
+                entry_hdl_map["IngressPipeImpl.l2_exact_table"].append(
+                    entry_hdl)
+                # set ecmp group
                 next_hop_index = int(
-                    self.switchNameToIndex(sw.next_hop[sw_next].split("-")[0]))
-                if int(self.switchNameToIndex(sw.name)) < next_hop_index:
+                    sw.next_hop[port].split("-")[0].split("s")[1])
+                if sw.index < next_hop_index:
                     upstream_ecmp_group.append(
-                        self.getSwitchInstanceFromPort(sw.next_hop[sw_next]))
-                elif int(self.switchNameToIndex(sw.name)) > next_hop_index:
+                        getSwitchInstanceFromPort(self.SWITCH_LIST,
+                                                  sw.next_hop[port]))
+                elif sw.index > next_hop_index:
                     downstream_ecmp_group.append(
-                        self.getSwitchInstanceFromPort(sw.next_hop[sw_next]))
+                        getSwitchInstanceFromPort(self.SWITCH_LIST,
+                                                  sw.next_hop[port]))
+            # self.deleteEntries(sw, entry_hdl_map)
+
             if len(upstream_ecmp_group) > 0 or len(downstream_ecmp_group) > 0:
                 self.createEcmpSelectorGroup(sw, downstream_ecmp_group,
                                              upstream_ecmp_group)
+                # ecmp to group: self.DOWNSTREAM_GROUP_HANDLE
                 print(
-                    "downstream_group_handle has %s, upstream_group_handle is %s"
-                    %
+                    "downstream_group: %s, upstream_group: %s" %
                     (self.DOWNSTREAM_GROUP_HANDLE, self.UPSTREAM_GROUP_HANDLE))
                 if len(upstream_ecmp_group) > 0:
                     for dst_index in range(
-                            int(sw.name.split("s")[1]) + 1,
-                            int(self.SWITCH_NUM)):
+                            int(sw.index) + 1, int(self.SWITCH_NUM)):
                         entry_hdl = self.writeEcmpGroupRoutingTable(
                             sw,
-                            self.getSwitchInstanceFromIndex(
-                                dst_index).mgr_ipv6,
+                            getSwitchInstanceFromIndex(self.SWITCH_LIST,
+                                                       dst_index).mgr_ipv6,
                             self.UPSTREAM_GROUP_HANDLE[sw.name])
                         entry_hdl_map[
                             "IngressPipeImpl.routing_v6_table"].append(
                                 entry_hdl)
+
                 if len(downstream_ecmp_group) > 0:
-                    for dst_index in range(int(sw.name.split("s")[1])):
+                    for dst_index in range(int(sw.index)):
                         entry_hdl = self.writeEcmpGroupRoutingTable(
                             sw,
-                            self.getSwitchInstanceFromIndex(
-                                dst_index).mgr_ipv6,
+                            getSwitchInstanceFromIndex(self.SWITCH_LIST,
+                                                       dst_index).mgr_ipv6,
                             self.DOWNSTREAM_GROUP_HANDLE[sw.name])
                         entry_hdl_map[
                             "IngressPipeImpl.routing_v6_table"].append(
@@ -399,45 +440,63 @@ class Controller():
         #     print("sw%d is %s" % (i, self.SWITCH_LIST[i]))
         #     self.getDelayRegister(self.SWITCH_LIST[i])
 
-    ########################################################
-    #################### Util FUnctions ####################
-    ########################################################
-    def getDelayRegister(self, sw):
-        return sw.register_read("EgressPipeImpl.link_delay_register", 0)
 
-    def switchNameToIndex(self, sw):
-        return int(sw.split("s")[1])
+##########################################################################
+#                             Util FUnctions                             #
+##########################################################################
+def getDelayRegister(sw):
+    return sw.register_read("EgressPipeImpl.link_delay_register", 0)
 
-    def getMacByPortName(self, port):
-        return netifaces.ifaddresses(port)[netifaces.AF_LINK][0]['addr']
 
-    def getIpv6ByPortName(self, port):
-        return netifaces.ifaddresses(port)[
-            netifaces.AF_INET6][0]['addr'].split("%")[0]
+def getMacByPortName(port):
+    return netifaces.ifaddresses(port)[netifaces.AF_LINK][0]['addr']
 
-    def getEntryHandle(self, entry):
-        return int(
-            str(entry).split("entry_handle=")[1].split(",")[0].split(")")[0])
 
-    def getSwitchMgrFromPort(self, port):
-        return port.split("-")[0] + "-mgr"
+def getIpv6ByPortName(port):
+    return netifaces.ifaddresses(port)[netifaces.AF_INET6][0]['addr'].split(
+        "%")[0]
 
-    def getSwitchInstanceFromPort(self, port):
-        for sw in self.SWITCH_LIST:
-            if str(sw.name) == str(port.split("-")[0]):
-                return sw
 
-    def getSwitchInstanceFromIndex(self, index):
-        for sw in self.SWITCH_LIST:
-            if int(sw.name.split("s")[1]) == int(index):
-                return sw
+def getEntryHandle(entry):
+    return int(
+        str(entry).split("entry_handle=")[1].split(",")[0].split(")")[0])
 
-    def nexthopToNeighbors(self, switch):
-        neighbors = []
-        for port in switch.next_hop.keys():
-            neighbor = str(switch.next_hop.get(port)).split("-")[0]
-            neighbors.append(neighbor)
-        return list(set(neighbors))
+
+def getSwitchMgrFromPort(port):
+    return port.split("-")[0] + "-mgr"
+
+
+def getSwitchInstanceFromPort(sw_list, port):
+    for sw in sw_list:
+        if str(sw.name) == str(port.split("-")[0]):
+            return sw
+
+
+def getSwitchInstanceFromIndex(sw_list, index):
+    for sw in sw_list:
+        if sw.index == int(index):
+            return sw
+
+
+def nexthopToNeighbors(switch):
+    neighbors = []
+    for port in switch.next_hop.keys():
+        neighbor = str(switch.next_hop.get(port)).split("-")[0]
+        neighbors.append(neighbor)
+    return list(set(neighbors))
+
+
+def getHostIpv6FromIndex(index):
+    tin_ipv6 = getIpv6ByPortName(str("s" + str(index) + "-tin"))
+    trf_ipv6 = tin_ipv6.rsplit(":", 1)[0] + ":101"
+    return trf_ipv6
+
+
+def getHostMacFromIndex(index):
+    # host: 10:00:11:11:00:12 -> sw: 10:00:11:11:00:11
+    tin_mac = getMacByPortName(str("s" + str(index) + "-tin"))
+    trf_mac = tin_mac.rsplit(":", 1)[0] + ":12"
+    return trf_mac
 
 
 if __name__ == "__main__":
