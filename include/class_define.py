@@ -24,6 +24,7 @@ from multiprocessing import Process, Queue, Pool
 
 from include import runtimedata
 
+
 def get_thrift_services(pre_type):
     services = [("standard", Standard.Client)]
 
@@ -35,6 +36,7 @@ def get_thrift_services(pre_type):
         services += [(None, None)]
 
     return services
+
 
 def thrift_connect(thrift_ip, thrift_port, services, out=sys.stdout):
     def my_print(s):
@@ -119,7 +121,7 @@ class SWITCH():
     def _description(self):
         str = "Switch %s description:\nManager_port = %s\n \
             Manager_ipv6 = %s\nManager_mac = %s\nPorts = %s\n \
-            Next_hop = %s\nHost_ipv6 = %s"                                           % (
+            Next_hop = %s\nHost_ipv6 = %s" % (
             self.name, self.mgr_port, self.mgr_ipv6, self.mgr_mac,
             self.port_ipv6, self.next_hop, self.host_ipv6)
         print(str)
@@ -202,7 +204,8 @@ class SWITCH():
         mgrp_hdl = self.mc_client.bm_mc_mgrp_create(0, int(gid))
         port_map_str = self.ports_to_port_map_str(ports)
         lag_map_str = self.ports_to_port_map_str(lags, description="lag")
-        l1_hdl = self.mc_client.bm_mc_node_create(0, rid, port_map_str, lag_map_str)
+        l1_hdl = self.mc_client.bm_mc_node_create(0, rid, port_map_str,
+                                                  lag_map_str)
         message = self.mc_client.bm_mc_node_associate(0, mgrp_hdl, l1_hdl)
         return mgrp_hdl, l1_hdl, message
 
@@ -260,8 +263,8 @@ class SWITCH():
         entry_handle = self.client.bm_mt_indirect_ws_add_entry(
             0,
             table_name=table_name,
-            match_key=runtimedata.parse_lpm_match_key(
-                match_key, match_key_types),
+            match_key=runtimedata.parse_lpm_match_key(match_key,
+                                                      match_key_types),
             grp_handle=grp_handle,
             options=BmAddEntryOptions(priority=0))
         return entry_handle
@@ -275,16 +278,16 @@ class SWITCH():
                 port_num = int(port_num_str)
             except:
                 raise runtimedata.UIn_Error("'%s' is not a valid %s number"
-                                "" % (port_num_str, description))
+                                            "" % (port_num_str, description))
             if port_num < 0:
                 raise runtimedata.UIn_Error("'%s' is not a valid %s number"
-                                "" % (port_num_str, description))
+                                            "" % (port_num_str, description))
             ports_int.append(port_num)
         ports_int.sort()
         for port_num in ports_int:
             if port_num == (last_port_num - 1):
                 raise runtimedata.UIn_Error("Found duplicate %s number '%s'"
-                                "" % (description, port_num))
+                                            "" % (description, port_num))
             port_map_str += "0" * (port_num - last_port_num) + "1"
             last_port_num = port_num + 1
         return port_map_str[::-1]

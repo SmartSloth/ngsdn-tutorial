@@ -17,7 +17,6 @@ import matplotlib.pyplot as plt
 import include.runtimedata
 from include.class_define import SWITCH, thrift_connect
 
-# links = [["eth0:s1-eth1", "eth1:s2-eth1"], ["eth0:s1-host"], ["eth0:s2-host"]]
 MGR_PORTNUM = 7
 TIN_PORTNUM = 6
 DEFAULT_MC_MGRP = 1
@@ -349,9 +348,6 @@ class Controller():
             entry_hdl = self.writeRmacTable(sw, sw.mgr_mac)
             entry_hdl_map["IngressPipeImpl.rmac"].append(entry_hdl)
 
-            # entry_hdl = self.writeL2ExactTable(sw, sw.mgr_mac, MGR_PORTNUM)
-            # entry_hdl_map["IngressPipeImpl.l2_exact_table"].append(entry_hdl)
-
             mgrp_hdl, l1_hdl, message = self.createL2MulticastGroup(
                 sw, DEFAULT_MC_MGRP, str(TIN_PORTNUM))
             self.MC_GROUP_HANDLE[sw.name] = [mgrp_hdl, l1_hdl, message]
@@ -373,12 +369,6 @@ class Controller():
             downstream_ecmp_group = []
             print("%s nexthop has: %s" % (sw.name, sw.next_hop))
             for port in sw.next_hop.keys():
-                # switch self port mac address
-                # port_ipv6 = getIpv6ByPortName(port)
-                # entry_hdl = self.writeNdpReply(sw, port_ipv6,
-                #                                getMacByPortName(port))
-                # entry_hdl_map["IngressPipeImpl.ndp_reply_table"].append(
-                #     entry_hdl)
                 next_hop_port = sw.next_hop[port]
                 neighbor = getSwitchInstanceFromPort(self.SWITCH_LIST,
                                                      next_hop_port)
@@ -403,7 +393,6 @@ class Controller():
             if len(upstream_ecmp_group) > 0 or len(downstream_ecmp_group) > 0:
                 self.createEcmpSelectorGroup(sw, downstream_ecmp_group,
                                              upstream_ecmp_group)
-                # ecmp to group: self.DOWNSTREAM_GROUP_HANDLE
                 print(
                     "downstream_group: %s, upstream_group: %s" %
                     (self.DOWNSTREAM_GROUP_HANDLE, self.UPSTREAM_GROUP_HANDLE))

@@ -21,11 +21,13 @@ class UIn_BadParamError(UIn_Error):
     def __str__(self):
         return self.info
 
+
 def bytes_to_int(byte_array):
     result = 0
     for b in byte_array:
         result = result * 256 + int(b)
     return result
+
 
 def bytes_to_string(byte_array):
     form = 'B' * len(byte_array)
@@ -98,7 +100,9 @@ def parse_lpm_match_key(key_fields, types):
         key = bytes_to_string(parse_param(input_str, t))
         tmp.append(key)
     param = BmMatchParam(type=BmMatchParamType.LPM,
-                         lpm=BmMatchParamLPM(key=tmp[0], prefix_length=bytes_to_int(tmp[1])))
+                         lpm=BmMatchParamLPM(key=tmp[0],
+                                             prefix_length=bytes_to_int(
+                                                 tmp[1])))
     params.append(param)
     return params
 
