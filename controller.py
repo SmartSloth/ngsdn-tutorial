@@ -17,8 +17,8 @@ import matplotlib.pyplot as plt
 import include.runtimedata
 from include.class_define import SWITCH, thrift_connect
 
-MGR_PORTNUM = 7
-TIN_PORTNUM = 6
+MGR_PORTNUM = 15
+TIN_PORTNUM = 7
 DEFAULT_MC_MGRP = 1
 
 
@@ -26,8 +26,10 @@ class Controller():
     def __init__(self):
         self.SWITCH_NUM = 0
         self.TOR_LIST = {}  # switch.name:host_ipv6
-        self.TOPO_FILE = "/int/topo/test_ipv6_topo"
+        self.TOPO_FILE = "/int/topo/tree_topo"
         self.GRAPH = nx.Graph()
+        self.LAYERS = []
+        self.LAYER_NUMBER = 0
         self.LINK_LIST = self.readTopoFile()
         self.SWITCH_LIST = self.switchConnect()
         self.DOWNSTREAM_GROUP_HANDLE = {}
@@ -53,7 +55,7 @@ class Controller():
                 ipv6 = ipv6.split("%")[0]
                 sw._port_map(port, ipv6, self.LINK_LIST[str(index)][port])
             switch_list.append(sw)
-            print("s%s description: %s" % (str(index), sw._description()))
+            # print("s%s description: %s" % (str(index), sw._description()))
         # except:
         #     print("connect error")
         return switch_list
@@ -61,8 +63,8 @@ class Controller():
     def readTopoFile(self):
         with open(self.TOPO_FILE, "r") as f:
             cmds = f.readlines()
-        tors = cmds[:2][0][:-1].split(":")[-1]
-        core = cmds[:2][1][:-1].split(":")[-1]
+        tors = cmds[:3][0][:-1].split(":")[-1]
+        core = cmds[:3][1][:-1].split(":")[-1]
         if tors != "":
             tors = [_[1:] for _ in tors.split(",")]
             sws = tors
@@ -85,9 +87,14 @@ class Controller():
         colors = [color_map.get(node, 0.25) for node in self.GRAPH.nodes()]
         # print("color_map has %s" % color_map)
         # print("colors has %s" % colors)
-
+        self.LAYER_NUMBER = int(cmds[:3][2][:-1].split(":")[-1])
+        for n in range(self.LAYER_NUMBER):
+            self.LAYERS.append(
+                cmds[3:3 +
+                     self.LAYER_NUMBER][n][:-1].split(":")[-1].split(","))
+        print("********** layers has: %s", self.LAYERS)
         links = dict(zip(sws, [{} for _ in sws]))
-        topo = cmds[2:]
+        topo = cmds[3 + self.LAYER_NUMBER:]
         edges = []
         for t in topo:
             s1 = t[:-1].split("-")[0]
@@ -166,8 +173,8 @@ class Controller():
 
     # IngressPipeImpl.l2_exact_table(hdr.ethernet.dst_addr)
     def writeL2ExactTable(self, switch, ethDstAddr, egressPort):
-        print("switch = %s, ethDstAddr = %s, egressPort = %d" %
-              (switch.name, ethDstAddr, egressPort))
+        # print("switch = %s, ethDstAddr = %s, egressPort = %d" %
+        #       (switch.name, ethDstAddr, egressPort))
         info = switch.table_add_exact(table="IngressPipeImpl.l2_exact_table",
                                       match_key=[str(ethDstAddr)],
                                       match_key_types=['mac'],
@@ -223,15 +230,16 @@ class Controller():
         print("Insert acl_table on %s successfully: %s" % (switch.name, info))
         return info
 
-    # IngressPipeImpl.routing_v6_table(hdr.ipv6.dst_addr)
-    def writeRoutingIpv6Table(self, switch, dstIpv6Addr, nextHopMac):
-        info = switch.table_add_lpm(table="IngressPipeImpl.routing_v6_table",
-                                    match_key=[str(dstIpv6Addr), 128],
-                                    match_key_types=['ipv6', '32'],
-                                    action="IngressPipeImpl.set_next_hop",
-                                    runtime_data=[str(nextHopMac)],
-                                    runtime_data_types=['mac'])
-        print("Insert routing_v6_table on %s successfully: %s" %
+    # IngressPipeImpl.ecmp_routing_v6_table(hdr.ipv6.dst_addr)
+    def writeDirectRoutingIpv6Table(self, switch, dstIpv6Addr, nextHopMac):
+        info = switch.table_add_lpm(
+            table="IngressPipeImpl.direct_routing_v6_table",
+            match_key=[dstIpv6Addr, "112"],
+            match_key_types=['ipv6', '32'],
+            action="IngressPipeImpl.set_next_hop",
+            runtime_data=[str(nextHopMac)],
+            runtime_data_types=['mac'])
+        print("Insert direct_routing_v6_table on %s successfully: %s" %
               (switch.name, info))
         return info
 
@@ -239,11 +247,11 @@ class Controller():
         print("switch is %s, dstIpv6Addr is %s, grp_handle is %s" %
               (switch.name, dstIpv6Addr, grp_handle))
         info = switch.add_entry_to_group(
-            table_name="IngressPipeImpl.routing_v6_table",
+            table_name="IngressPipeImpl.ecmp_routing_v6_table",
             match_key=[dstIpv6Addr, "112"],
             match_key_types=["ipv6", "32"],
             grp_handle=int(grp_handle))
-        print("Insert routing_v6_table on %s successfully: %s" %
+        print("Insert ecmp_routing_v6_table on %s successfully: %s" %
               (switch.name, info))
         return info
 
@@ -300,13 +308,15 @@ class Controller():
     def deleteAllEntries(self):
         for sw in self.SWITCH_LIST:
             for table in [
-                    "IngressPipeImpl.ndp_reply_table", "IngressPipeImpl.rmac",
+                    "IngressPipeImpl.ndp_reply_table",
+                    "IngressPipeImpl.rmac",
                     "IngressPipeImpl.srv6_my_sid",
                     "IngressPipeImpl.srv6_transit",
                     "IngressPipeImpl.l2_exact_table",
                     "IngressPipeImpl.l2_ternary_table",
                     "IngressPipeImpl.acl_table",
-                    "IngressPipeImpl.routing_v6_table"
+                    "IngressPipeImpl.ecmp_routing_v6_table",
+                    "IngressPipeImpl.direct_routing_v6_table"
             ]:
                 entries = sw.table_get(table)
                 for e in entries:
@@ -343,7 +353,8 @@ class Controller():
                 "IngressPipeImpl.l2_exact_table": [],
                 "IngressPipeImpl.l2_ternary_table": [],
                 "IngressPipeImpl.acl_table": [],
-                "IngressPipeImpl.routing_v6_table": []
+                "IngressPipeImpl.ecmp_routing_v6_table": [],
+                "IngressPipeImpl.direct_routing_v6_table": []
             }
             entry_hdl = self.writeRmacTable(sw, sw.mgr_mac)
             entry_hdl_map["IngressPipeImpl.rmac"].append(entry_hdl)
@@ -355,9 +366,12 @@ class Controller():
             entry_hdl = self.writeL2TernaryTable(sw, sw.mgr_mac, mgrp_hdl)
             entry_hdl_map["IngressPipeImpl.l2_ternary_table"].append(entry_hdl)
 
-            entry_hdl = self.writeNdpReply(sw, self.TOR_LIST[str(sw.index)],
-                                           sw.mgr_mac)
-            entry_hdl_map["IngressPipeImpl.ndp_reply_table"].append(entry_hdl)
+            if str(sw.index) in self.TOR_LIST.keys():
+                entry_hdl = self.writeNdpReply(sw,
+                                               self.TOR_LIST[str(sw.index)],
+                                               sw.mgr_mac)
+                entry_hdl_map["IngressPipeImpl.ndp_reply_table"].append(
+                    entry_hdl)
 
             entry_hdl = self.writeNdpReply(sw, sw.mgr_ipv6, sw.mgr_mac)
             entry_hdl_map["IngressPipeImpl.ndp_reply_table"].append(entry_hdl)
@@ -378,45 +392,60 @@ class Controller():
                 entry_hdl_map["IngressPipeImpl.l2_exact_table"].append(
                     entry_hdl)
                 # set ecmp group
-                next_hop_index = int(
-                    sw.next_hop[port].split("-")[0].split("s")[1])
-                if sw.index < next_hop_index:
-                    upstream_ecmp_group.append(
-                        getSwitchInstanceFromPort(self.SWITCH_LIST,
-                                                  sw.next_hop[port]))
-                elif sw.index > next_hop_index:
-                    downstream_ecmp_group.append(
-                        getSwitchInstanceFromPort(self.SWITCH_LIST,
-                                                  sw.next_hop[port]))
+                if str(neighbor.index) in self.TOR_LIST.keys():
+                    entry_hdl = self.writeDirectRoutingIpv6Table(
+                        sw, self.TOR_LIST.get(str(neighbor.index)),
+                        neighbor.mgr_mac)
+                    entry_hdl_map[
+                        "IngressPipeImpl.direct_routing_v6_table"].append(
+                            entry_hdl)
+                else:
+                    if sw.index < neighbor.index:
+                        upstream_ecmp_group.append(
+                            getSwitchInstanceFromPort(self.SWITCH_LIST,
+                                                      next_hop_port))
+                    elif sw.index > neighbor.index:
+                        downstream_ecmp_group.append(
+                            getSwitchInstanceFromPort(self.SWITCH_LIST,
+                                                      next_hop_port))
             # self.deleteEntries(sw, entry_hdl_map)
-
+            sw_layer = getLayerFromIndex(self.LAYERS, sw.index)
+            print("sw_layer = %d" % sw_layer)
             if len(upstream_ecmp_group) > 0 or len(downstream_ecmp_group) > 0:
                 self.createEcmpSelectorGroup(sw, downstream_ecmp_group,
                                              upstream_ecmp_group)
-                print(
-                    "downstream_group: %s, upstream_group: %s" %
-                    (self.DOWNSTREAM_GROUP_HANDLE, self.UPSTREAM_GROUP_HANDLE))
-                if len(upstream_ecmp_group) > 0:
+                # print(
+                #     "downstream_group: %s, upstream_group: %s" %
+                #     (self.DOWNSTREAM_GROUP_HANDLE,
+                #     self.UPSTREAM_GROUP_HANDLE))
+                if len(upstream_ecmp_group
+                       ) > 0 and sw_layer != self.LAYER_NUMBER - 2:
                     for dst_index in range(
                             int(sw.index) + 1, int(self.SWITCH_NUM)):
+                        dst_layer = getLayerFromIndex(self.LAYERS, dst_index)
+                        if dst_layer == sw_layer:
+                            continue
                         entry_hdl = self.writeEcmpGroupRoutingTable(
                             sw,
                             getSwitchInstanceFromIndex(self.SWITCH_LIST,
                                                        dst_index).mgr_ipv6,
                             self.UPSTREAM_GROUP_HANDLE[sw.name])
                         entry_hdl_map[
-                            "IngressPipeImpl.routing_v6_table"].append(
+                            "IngressPipeImpl.ecmp_routing_v6_table"].append(
                                 entry_hdl)
 
-                if len(downstream_ecmp_group) > 0:
+                if len(downstream_ecmp_group) > 0 and sw_layer != 1:
                     for dst_index in range(int(sw.index)):
+                        dst_layer = getLayerFromIndex(self.LAYERS, dst_index)
+                        if dst_layer == sw_layer:
+                            continue
                         entry_hdl = self.writeEcmpGroupRoutingTable(
                             sw,
                             getSwitchInstanceFromIndex(self.SWITCH_LIST,
                                                        dst_index).mgr_ipv6,
                             self.DOWNSTREAM_GROUP_HANDLE[sw.name])
                         entry_hdl_map[
-                            "IngressPipeImpl.routing_v6_table"].append(
+                            "IngressPipeImpl.ecmp_routing_v6_table"].append(
                                 entry_hdl)
                 # self.deleteEntries(sw, entry_hdl_map)
                 # self.deleteGroups(sw)
@@ -476,8 +505,8 @@ def nexthopToNeighbors(switch):
 
 
 def getHostIpv6FromIndex(index):
-    tin_ipv6 = getIpv6ByPortName(str("s" + str(index) + "-tin"))
-    trf_ipv6 = tin_ipv6.rsplit(":", 1)[0] + ":101"
+    mgr_ipv6 = getIpv6ByPortName(str("s" + str(index) + "-mgr"))
+    trf_ipv6 = mgr_ipv6.rsplit(":", 1)[0] + ":101"
     return trf_ipv6
 
 
@@ -486,6 +515,14 @@ def getHostMacFromIndex(index):
     tin_mac = getMacByPortName(str("s" + str(index) + "-tin"))
     trf_mac = tin_mac.rsplit(":", 1)[0] + ":12"
     return trf_mac
+
+
+def getLayerFromIndex(layers, index):
+    for i in range(1, len(layers)):
+        if int(layers[i - 1][0].split("s")[-1]) <= index and int(
+                layers[i][0].split("s")[-1]) > index:
+            return i - 1
+    return i
 
 
 if __name__ == "__main__":

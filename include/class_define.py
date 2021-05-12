@@ -170,7 +170,7 @@ class SWITCH():
             runtimedata.parse_runtime_data(runtime_data, runtime_data_types))
         return entry_handle
 
-    #types mean "ip" or "mac" or a "integer", integer is bitwidth of a param
+    # types mean "ip" or "mac" or a "integer", integer is bitwidth of a param
     def table_add_lpm(self, table, match_key, match_key_types, action,
                       runtime_data, runtime_data_types):
         entry_handle = self.client.bm_mt_add_entry(

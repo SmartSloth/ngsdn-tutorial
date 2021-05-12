@@ -35,7 +35,7 @@
 // Maximum number of hops supported when using SRv6.
 // Required for Exercise 7.
 #define SRV6_MAX_HOPS 4
-#define MAX_PORTS 8
+#define MAX_PORTS 16
 // v1model: https://github.com/p4lang/p4c/blob/master/p4include/v1model.p4
 
 typedef bit<9>   port_num_t;
@@ -445,7 +445,7 @@ control IngressPipeImpl (inout parsed_headers_t    hdr,
         // Decrement TTL
         hdr.ipv6.hop_limit = hdr.ipv6.hop_limit - 1;
     }
-    table routing_v6_table {
+    table ecmp_routing_v6_table {
       key = {
           hdr.ipv6.dst_addr:          lpm;
           // The following fields are not used for matching, but as input to the
@@ -462,7 +462,18 @@ control IngressPipeImpl (inout parsed_headers_t    hdr,
           set_next_hop;
       }
       implementation = ecmp_selector;
-      @name("routing_v6_table_counter")
+      @name("ecmp_routing_v6_table_counter")
+      counters = direct_counter(CounterType.packets_and_bytes);
+    }
+
+    table direct_routing_v6_table {
+      key = {
+          hdr.ipv6.dst_addr:          lpm;
+      }
+      actions = {
+          set_next_hop;
+      }
+      @name("direct_routing_v6_table_counter")
       counters = direct_counter(CounterType.packets_and_bytes);
     }
 
@@ -610,7 +621,9 @@ control IngressPipeImpl (inout parsed_headers_t    hdr,
                 } else {
                     srv6_transit.apply();
                 }
-                routing_v6_table.apply();
+                if (!ecmp_routing_v6_table.apply().hit) {
+                    direct_routing_v6_table.apply();
+                }
                 if(hdr.ipv6.hop_limit == 0) { drop(); }
             }
 

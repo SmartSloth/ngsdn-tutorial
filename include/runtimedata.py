@@ -83,7 +83,7 @@ def parse_runtime_data(params, types):
 
 def parse_match_key(key_fields, types):
     params = []
-    #print "key "+ key_fields+ " type" + types
+    # print "key "+ key_fields+ " type" + types
     for input_str, t in zip(key_fields, types):
         key = bytes_to_string(parse_param(input_str, t))
         param = BmMatchParam(type=BmMatchParamType.EXACT,
@@ -95,7 +95,7 @@ def parse_match_key(key_fields, types):
 def parse_lpm_match_key(key_fields, types):
     params = []
     tmp = []
-    #print "key "+ key_fields+ " type" + types
+    # print "key "+ key_fields+ " type" + types
     for input_str, t in zip(key_fields, types):
         key = bytes_to_string(parse_param(input_str, t))
         tmp.append(key)

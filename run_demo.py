@@ -14,11 +14,14 @@ def bind_host(veth0, veth1, num):
     subprocess.Popen("bash /int/util/bind_host.sh %s %s %s" % (veth0, veth1, num),
                      shell=True).wait()
 
+
 def setup_gw(num, veth_port):
     subprocess.Popen("bash /int/util/setup_gw.sh %s %s" % (num, veth_port),
                      shell=True).wait()
 
 
+MGR_PORTNUM = "15"
+TIN_PORTNUM = "7"
 BMV2_PATH = "/behavioral-model/"
 SWITCH_PATH = "/usr/local/bin/simple_switch "
 # simple_switch target uses the SimplePreLAG engine
@@ -54,27 +57,30 @@ if args.p4_file:
 with open(args.topo_file, "r") as f:
     cmds = f.readlines()
 
-tors = cmds[:2][0][:-1].split(":")[-1]
-core = cmds[:2][1][:-1].split(":")[-1]
+tors = cmds[:3][0][:-1].split(":")[-1]
+core = cmds[:3][1][:-1].split(":")[-1]
 if tors != "":
     tors = [_[1:] for _ in tors.split(",")]
     sws = tors
 if core != "":
     core = [_[1:] for _ in core.split(",")]
     sws = sws + core
+layer_number = int(cmds[:3][2][:-1].split(":")[-1])
 # print("********** swss has: %s", str(sws))
 # print("********** tors has: %s", str(tors))
 # print("********** core has: %s", str(core))
-
+layers = []
+print("layer_number = %d" % layer_number)
+for n in range(layer_number):
+    layers.append(cmds[3:3+layer_number][n][:-1].split(":")[1].split(","))
+# print("********** layers has: %s", layers)
 links = dict(zip(sws, [{} for _ in sws]))
-topo = cmds[2:]
+topo = cmds[3+layer_number:]
 for s in sws:
     switch_mgr = "s%s-mgr" % (s, )
     setup_veth("s%s-int" % (s, ), switch_mgr)  # clone to controller, port 11
-    setup_gw("%s" % (s, ), "s%s-mgr" % (s, ))
-    subprocess.Popen("ip link set dev %s address 10:00:11:11:%s:11" %
-                     (switch_mgr, s),
-                     shell=True).wait()
+    setup_gw("%s" % (s, ), switch_mgr)
+
 for s in tors:
     bind_host("s%s-trf" % (s, ), "s%s-tin" % (s, ),
               "%s" % (s, ))  # connect to host, port 10
@@ -85,20 +91,22 @@ for t in topo:
     s1_iface = s1.split(":")[1]
     s2_name = s2.split(":")[0][1:]
     s2_iface = s2.split(":")[1]
-    setup_veth("s%s-eth%s" % (s1_name, s1_iface),
-               "s%s-eth%s" % (s2_name, s2_iface))
-    links[s1_name][s1_iface] = "s%s-eth%s" % (s1_name, s1_iface)
-    links[s2_name][s2_iface] = "s%s-eth%s" % (s2_name, s2_iface)
+    s1_port = "s%s-eth%s" % (s1_name, s1_iface)
+    s2_port = "s%s-eth%s" % (s2_name, s2_iface)
+    print("s1_port = %s, s2_port = %s" % (s1_port, s2_port))
+    setup_veth(s1_port, s2_port)
+    links[s1_name][s1_iface] = s1_port
+    links[s2_name][s2_iface] = s2_port
 # print("********** links has: %s", str(links))
 switch_args_list = []
 for i in sws:
     switch_args = "--thrift-port %d --device-id %s " % (args.thrift_port +
                                                         int(i), i)
     if i in tors:
-        switch_args += "-i 6@s%s-tin " % (i, ) # connect to host, port 6
+        switch_args += "-i %s@s%s-tin " % (TIN_PORTNUM, i)  # ->host
     for j, p in links[i].items():
         switch_args += "-i %s@%s " % (j, p)
-    switch_args += "-i 7@s%s-mgr " % (i, ) # clone to controller, port 7
+    switch_args += "-i %s@s%s-mgr " % (MGR_PORTNUM, i)  # ->controller
     if args.console_log:
         switch_args += "--log-console "
     # switch_args += "--pre SimplePreLAG "
